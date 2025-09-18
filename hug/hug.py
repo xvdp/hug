@@ -1,0 +1,121 @@
+from typing import Union, Optional
+import huggingface_hub as hf_hub
+from huggingface_hub.errors import HFValidationError, HfHubHTTPError
+import os
+import os.path as osp
+from pathlib import Path
+
+def get_hf_home():
+    import os
+    home = os.getenv('HUGGINGFACE_HOME') or os.path.expanduser("~/.cache/huggingface")
+    assert os.path.isdir(home), f" huggingface home folder does not exist in {home}"
+    return home
+
+def list_models():
+    for repo in hf_hub.list_cached_models():
+        print(repo.repo_id, repo.repo_type, repo.size_on_disk // 1024**2, "MB")
+
+def get_model_files(model= "stable-diffusion-v1-5/stable-diffusion-inpainting"):
+    """"""
+    cache_root = hf_hub.snapshot_download(model, local_files_only=True) 
+
+    for root, _, files in os.walk(cache_root):
+        level = root.replace(cache_root, '').count(os.sep)
+        indent = ' ' * 2 * level
+        print(f"{indent}{os.path.basename(root)}/")
+        sub_indent = ' ' * 2 * (level + 1)
+        for f in files:
+            print(f"{sub_indent}{f}")
+
+
+def param_summary(model, name):
+    total = sum(p.numel() for p in model.parameters())
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"{name:15} | total {total/1e6:7.2f} M | trainable {trainable/1e6:7.2f} M")
+
+# for n, c in pipe_inpaint.components.items():
+#     if hasattr(c, 'parameters'):
+#         param_summary(c, n)
+
+def list_models(tag="diffusers", search="stabilityai/stable-diffusion"):
+    from huggingface_hub import list_models
+    print("\n".join([(m.modelId) for m in
+                 list_models(filter="diffusers", search="stabilityai/stable-diffusion", sort="downloads", direction=-1, limit=40)]))
+
+
+def _modelid_to_folder(model_id: str) -> str:
+    return f"models--{model_id.replace("/", "--")}"
+
+def _folder_to_modelid(folder: str) -> str:
+    parts = folder.split("--")
+    if folder.startswith("models--") and len(parts) >= 3:
+        return f"{parts[1]}/{parts[2]}"
+    return None
+
+def _folders_to_modelids(folders: Union[list,tuple,str]) -> list:
+    if isinstance(folders, str):
+        folders = (folders, )
+    out = ["/".join(f.replace("models--", "").split("--")[:2]) for f in folders if
+           (osp.isdir(f) and f.startswith("models--") and len(f.split("--")) >=3)]
+    return out
+
+def _get_snapshots(model_folder: str) -> list:
+    out = []
+    snapshot_dir = osp.join(model_folder, 'snapshots')
+    if osp.isdir(snapshot_dir):
+        out = [f.path for f in os.scandir(snapshot_dir) if f.is_dir]
+    return out
+
+def _sorted_commits(model_id: str ) -> list:
+    """ requires connection"""
+    api = hf_hub.HfApi()
+    commits = api.list_repo_commits(model_id, repo_type="model")
+    return {c.commit_id: i for i, c in
+            enumerate(sorted(commits, key=lambda c: c.created_at, reverse=True))}
+
+def _model_exists(model_id: str) -> bool:
+    api = hf_hub.HfApi()
+    try:
+        api.model_info(model_id)
+        return True
+    except HFValidationError as e:
+        print (f" model_id {model_id} not found", e)
+    return False
+
+def get_local_snapshots(model_id: str,
+                        cache_home: Optional[str] = None,
+                        download: bool = False,
+                        ) -> list:
+    """ check new, legacy folders and custom cache_home for model_id snapshots
+    verify snapshot integrity
+    sort from recent to older
+    """
+    home = cache_home or get_hf_home()
+    _legacy_dirs = ['hub', 'diffusers', 'transformers']
+    folders = [osp.join(home, d) for d in _legacy_dirs]
+    if cache_home is not None:
+        folders = [cache_home] + folders
+
+    _target_folder = _modelid_to_folder(model_id)
+    out = []
+    for f in folders:
+        out += _get_snapshots(osp.join(f, _target_folder))
+
+    if not out:
+        print(f" no local model found")
+        if download:
+            out = [hf_hub.snapshot_download(model_id)]
+    try:
+        commits = _sorted_commits(model_id)
+        if len(out) > 1:
+            snapshot_key=lambda path: commits.get(osp.basename(path), float('inf'))
+            out = sorted(out, key=snapshot_key)
+        commits = list(commits.keys())
+        if osp.basename(out[0]) != commits[0]:
+            print(f"there is a newer commit that locally stored at {out[0]}, see {'\n'.join(commits)}")
+    except HfHubHTTPError as e:
+        print(f"not ordering commits, no internet connection found, {e}")
+    return out
+
+
+

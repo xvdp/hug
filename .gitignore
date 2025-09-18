@@ -1,0 +1,5 @@
+imij/version.py
+build/
+*.egg-info/
+__pycache__/
+scripts/
