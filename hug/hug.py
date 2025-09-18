@@ -3,7 +3,7 @@ import huggingface_hub as hf_hub
 from huggingface_hub.errors import HFValidationError, HfHubHTTPError
 import os
 import os.path as osp
-from pathlib import Path
+from pprint import pprint
 
 def get_hf_home():
     import os
@@ -47,6 +47,7 @@ def _modelid_to_folder(model_id: str) -> str:
     return f"models--{model_id.replace("/", "--")}"
 
 def _folder_to_modelid(folder: str) -> str:
+    folder = osp.basename(folder)
     parts = folder.split("--")
     if folder.startswith("models--") and len(parts) >= 3:
         return f"{parts[1]}/{parts[2]}"
@@ -55,7 +56,7 @@ def _folder_to_modelid(folder: str) -> str:
 def _folders_to_modelids(folders: Union[list,tuple,str]) -> list:
     if isinstance(folders, str):
         folders = (folders, )
-    out = ["/".join(f.replace("models--", "").split("--")[:2]) for f in folders if
+    out = ["/".join(f.replace("models--", "").split("--")[:2]) for f in osp.basename(folders) if
            (osp.isdir(f) and f.startswith("models--") and len(f.split("--")) >=3)]
     return out
 
@@ -82,19 +83,60 @@ def _model_exists(model_id: str) -> bool:
         print (f" model_id {model_id} not found", e)
     return False
 
-def get_local_snapshots(model_id: str,
-                        cache_home: Optional[str] = None,
-                        download: bool = False,
-                        ) -> list:
-    """ check new, legacy folders and custom cache_home for model_id snapshots
-    verify snapshot integrity
-    sort from recent to older
-    """
+def _get_model_dirs(cache_home: Union[str, list, tuple, None] = None,) -> list:
     home = cache_home or get_hf_home()
     _legacy_dirs = ['hub', 'diffusers', 'transformers']
-    folders = [osp.join(home, d) for d in _legacy_dirs]
+    if isinstance(home, str):
+        home = [home]
+    folders = []
+    for h in home:
+        for d in _legacy_dirs:
+            _d = osp.join(h, d)
+            if os.path.isdir(_d):
+                folders.append(_d)
     if cache_home is not None:
-        folders = [cache_home] + folders
+        folders = home + folders
+    return folders
+
+def _get_all_local_snapshots(cache_home: Union[str, list, tuple, None] = None, verbose: bool=False, **kwargs) -> dict:
+    folders = []
+    for f in _get_model_dirs(cache_home):
+        folders += [f.path for f in os.scandir(f) if f.is_dir()
+                    and _folder_to_modelid(f.name) is not None]
+    #return folders
+    out = {}
+    for f in folders:
+        k = _folder_to_modelid(f)
+        if k not in out:
+            out[k] = []
+        out[k] +=  _get_snapshots(f)
+    if verbose:
+        pprint(out)
+    return out
+
+def get_local_snapshots(model_id: Optional[str] = None,
+                        cache_home: Union[str, list, tuple, None] = None,
+                        download: bool = False,
+                        **kwargs) -> Union[dict, list]:
+    """ Two behaviours:
+        if  model_id 
+            model_id = str  ->  [snapshot dirs]
+    Args
+        model_id = None ->  {model_id_0:[snapshot dirs, ...], ...}
+                 = str  ->  [snapshot dirs]
+        cache_home (str, list) = None -> $HUGGINGFACE_HOME or ~/.cache/huggingface
+        download (bool [False]) -> if true and no model found, download newiest
+    ** kwargs:
+        verbose (bool [False]), True and model_id==None -> ppprint snapshots
+
+    check new, legacy folders and custom cache_home for model_id snapshots
+    sort from recent to older
+
+    """
+    if model_id is None:
+        return _get_all_local_snapshots(cache_home, **kwargs)
+
+    folders = _get_model_dirs(cache_home)
 
     _target_folder = _modelid_to_folder(model_id)
     out = []

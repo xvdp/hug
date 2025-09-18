@@ -16,11 +16,18 @@ def list_pipelines(key="StableDiffusion", i=False):
     return [p for p in pipelines if key in case(p, i)]
 
 def load_pipeline(pipeline, model_id, download=False, **kwargs):
+    """
+    looks thru all local folders, whether in hub or diffusers, sorts snapshots loads
+    ex.
+    >>> pipeline = 'StableDiffusionImg2ImgPipeline'
+    >>> model_id='stable-diffusion-v1-5/stable-diffusion-v1-5'
+    >>> pipe = load_pipeline(pipeline, model_id, torch_dtype=torch.float16)
+    """
     _pipelines = diffusers._import_structure['pipelines']
     assert pipeline in _pipelines, f"pipeline {pipeline} not found, among {_pipelines}"
     snaps = get_local_snapshots(model_id)
     if snaps:
-        model_id = snaps
+        model_id = snaps[0]
     elif not download:
         print(f"no local snapshot for model_id {model_id} found")
         return None
