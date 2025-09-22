@@ -98,7 +98,13 @@ def _get_model_dirs(cache_home: Union[str, list, tuple, None] = None,) -> list:
         folders = home + folders
     return folders
 
-def _get_all_local_snapshots(cache_home: Union[str, list, tuple, None] = None, verbose: bool=False, **kwargs) -> dict:
+def list_local_snapshots(cache_home: Union[str, list, tuple, None] = None,
+                         verbose: bool=True) -> dict:
+    """ lists all snapshots under cache_home /hub /transformers /diffusers
+    Args
+        cache_home (str, list) = None -> $HUGGINGFACE_HOME or ~/.cache/huggingface
+        verbose (bool [True])  -> pprint snapshots dict
+    """
     folders = []
     for f in _get_model_dirs(cache_home):
         folders += [f.path for f in os.scandir(f) if f.is_dir()
@@ -114,27 +120,17 @@ def _get_all_local_snapshots(cache_home: Union[str, list, tuple, None] = None, v
         pprint(out)
     return out
 
-def get_local_snapshots(model_id: Optional[str] = None,
+
+def get_local_snapshots(model_id: str,
                         cache_home: Union[str, list, tuple, None] = None,
-                        download: bool = False,
-                        **kwargs) -> Union[dict, list]:
-    """ Two behaviours:
-        if  model_id 
-            model_id = str  ->  [snapshot dirs]
+                        download: bool = False) -> list:
+    """ find local shapshots and (if internet connection) orders them, ->out[0] is latest
+    checks under cache_home (default $HUGGINGFACE_HOME or ~/.cache/home)
     Args
-        model_id = None ->  {model_id_0:[snapshot dirs, ...], ...}
-                 = str  ->  [snapshot dirs]
+        model_id    (str)  ->  [snapshot dirs]
         cache_home (str, list) = None -> $HUGGINGFACE_HOME or ~/.cache/huggingface
-        download (bool [False]) -> if true and no model found, download newiest
-    ** kwargs:
-        verbose (bool [False]), True and model_id==None -> ppprint snapshots
-
-    check new, legacy folders and custom cache_home for model_id snapshots
-    sort from recent to older
-
+        download (bool [False]) -> if True and no model found, download newest
     """
-    if model_id is None:
-        return _get_all_local_snapshots(cache_home, **kwargs)
 
     folders = _get_model_dirs(cache_home)
 
