@@ -1,15 +1,17 @@
 # hug
-basic hugging face handling scripts
-
-As with the rest of the ai space, updates mean that code rots quite quickly. 
-
-HF is great in that it is has lots of stuff, but its indirection is a bit annoying.
-
-By default on local machines code gets downloaded to `~/.cache/huggingface`. Fortunately HF provides an env `$HUGGINGFACE_HOME`, which if set will serve as main store. Unfortunately substores keep changing... erst `$HUGGINGFACE_HOME/diffusers` and `$HUGGINGFACE_HOME/transformers` now go to `$HUGGINGFACE_HOME/hub` so you may end up downloading the same projects twice if you arent careful.
+basic hugging face handling scripts. Hugging space api is not clear to me, as like tha rest of the AI dev space has lots of code rot.
 
 
-## some cmds
-Operate on `$HUGGINGFACE_HOME` or `~/.cache/huggingface` or custom cache_home/s, under subfolders /hub /transformers /diffusers
+HF will require tokens and login to download  `huggingface-cli login`
+
+## Hugging face cache
+* Local machine default `~/.cache/huggingface`, or `$HUGGINGFACE_HOME` 
+* subfolders: models now got to the `<cachehome>/hub`, before to `<>/diffusers` and `<>/transformers`
+## Traversing huggingface with cli
+* `models = list_models( filter='', search='', sort='', limit='', ... ) -> iterator` [HF Notes](HFNOTES.md) # 2025.09 -> 2M+ models
+* `mod = next(models)` -> `.id` (name)==`.modelId` (name), `._id` (snapshot hash), `.pipeline_tag` (task), `.private` (bool), `.tags` (metadata list, papers, etc)
+
+## snapshots
 ```python
 get_local_snapshots(
     model_id:               # list snapshots with id, checks if a newer one exists in huggingface
@@ -22,9 +24,30 @@ get_local_snapshots(
 list_local_snapshots(cache_home: Union[str, list, tuple, None] = None, verobse=True) -> dict:
     # list all local snapshots 
 ```
+managed variant of native hf commend 
+`$ huggingface-cli scan-cache `
 
+### get pipeline for a downloaded snapshot
+``` python
+get_snapshot_pipeline(snapshot)
+# pulls info from model if model_index.json found under snapshot
+# Q: does every snapshot have a pipeline ? naa
+```
+### get snapshots for a pipeline
+```python
+get_pipeline_snapshots()
+```
+
+## diffusers
 ```python
 list_pipelines(key, i=False, w=False) # list available pipelines with grep like switches -i -w
-load_pipeline(pipeline: str, model_id: str, dowmload=False, **kwargs) 
-# generic pipeline load, prefer local
+# e.g.
+>>> list_pipelines("stableaudio", i=True) # -> ['StableAudioPipeline', 'StableAudioProjectionModel']
+```
+```python
+load_pipeline(pipeline: str, model_id: str, download=False, **kwargs)  # download=False : only load pipe if locally found
+# e.g.
+>>> pipe = load_pipeline(pipeline='StableDiffusionImg2ImgPipeline', model_id='stable-diffusion-v1-5/stable-diffusion-v1-5', torch_dtype=torch.float16)
+>>> pipe = load_pipeline(pipeline='StableDiffusionInpaintPipeline', model_id='stable-diffusion-v1-5/stable-diffusion-inpainting', torch_dtype=torch.float16)
+
 ```

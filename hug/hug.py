@@ -1,8 +1,10 @@
 from typing import Union, Optional
 import huggingface_hub as hf_hub
 from huggingface_hub.errors import HFValidationError, HfHubHTTPError
+from huggingface_hub import hf_hub_download, scan_cache_dir
 import os
 import os.path as osp
+import json
 from pprint import pprint
 
 def get_hf_home():
@@ -26,7 +28,6 @@ def get_model_files(model= "stable-diffusion-v1-5/stable-diffusion-inpainting"):
         sub_indent = ' ' * 2 * (level + 1)
         for f in files:
             print(f"{sub_indent}{f}")
-
 
 def param_summary(model, name):
     total = sum(p.numel() for p in model.parameters())
@@ -98,12 +99,30 @@ def _get_model_dirs(cache_home: Union[str, list, tuple, None] = None,) -> list:
         folders = home + folders
     return folders
 
+"""
+from huggingface_hub import list_models
+print("\n".join([(m.modelId) for m in
+                 list_models(filter="diffusers", search="stabilityai/stable-diffusion", sort="downloads", direction=-1, limit=40)]))
+print("\n".join([(m.modelId) for m in
+                 list_models(filter="diffusers", search="stable-diffusion-v1-", sort="downloads", direction=-1, limit=40)]))
+
+                 
+dict_keys(['id', 'author', 'sha', 'last_modified', 'created_at', 'private', 'gated', 'disabled', 'downloads',
+'downloads_all_time', 'likes', 'library_name', 'gguf', 'inference', 'inference_provider_mapping', 'tags', 'pipeline_tag',
+'mask_token', 'trending_score', 'card_data', 'widget_data', 'model_index', 'config', 'transformers_info', 'siblings', 'spaces',
+'safetensors', 'security_repo_status', 'xet_enabled', 'lastModified', 'cardData', 'transformersInfo', '_id', 'modelId'])
+
+"""
+
 def list_local_snapshots(cache_home: Union[str, list, tuple, None] = None,
                          verbose: bool=True) -> dict:
     """ lists all snapshots under cache_home /hub /transformers /diffusers
     Args
         cache_home (str, list) = None -> $HUGGINGFACE_HOME or ~/.cache/huggingface
         verbose (bool [True])  -> pprint snapshots dict
+
+    similar to 
+    $ huggingface-cli scan-cache # except this scans not just hub/ but diffusers/ ant transformers/
     """
     folders = []
     for f in _get_model_dirs(cache_home):
@@ -111,11 +130,21 @@ def list_local_snapshots(cache_home: Union[str, list, tuple, None] = None,
                     and _folder_to_modelid(f.name) is not None]
     #return folders
     out = {}
+    _out = {}
+    empty = {}
+
     for f in folders:
         k = _folder_to_modelid(f)
-        if k not in out:
-            out[k] = []
-        out[k] +=  _get_snapshots(f)
+
+        if k not in _out:
+            _out[k] = []
+        _out[k] +=  _get_snapshots(f)
+
+    for k, v in _out.items():
+        if len(v):
+            out[k] = v
+        else:
+            empty[k] = []
     if verbose:
         pprint(out)
     return out
@@ -154,6 +183,57 @@ def get_local_snapshots(model_id: str,
     except HfHubHTTPError as e:
         print(f"not ordering commits, no internet connection found, {e}")
     return out
+
+def get_snapshot_pipeline(snapshot):
+    """ From a local snapshot, get which pipleine it applies to
+    """
+    cf = [f.path for f in os.scandir(snapshot) if f.name=="model_index.json"][0]
+    if cf:
+        cfg = json.load(open(cf))
+        return cfg.get("_class_name")
+    else:
+        print("incomplete snapshot, download with model_index.json")
+    return None
+
+
+def get_pipeline_snapshots(pipeline="StableDiffusionInpaintPipeline", local_files_only=False):
+    """ from a pipleine with a task, list app,icable snapshots. snapshots.
+    WIP TODO : fix, clean , generalize and TEST
+    looks into hugging face to which 
+    """
+
+    api = hf_hub.HfApi()
+
+    # 1. grab candidate repos from the Hub
+    repos = api.list_models(
+        filter="diffusers",
+        task="text-to-image-inpainting",   # or "text-to-image", "image-to-image" …
+        sort="downloads",
+        direction=-1,
+        limit=200,
+    )
+
+    # 2. keep only the ones that really use the desired pipeline
+    compatible = []                       # list of (repo_id, snapshot_hash)
+    for r in repos:
+        try:
+            cfg_path = hf_hub_download(r.id, "model_index.json", local_files_only=local_files_only)
+            cls_name = json.load(open(cfg_path)).get("_class_name")
+            if cls_name == pipeline:
+                compatible.append(r.id)
+        except Exception:
+            continue                       # private / corrupted / missing file
+
+    print(f"Repos that can be loaded with {pipeline}:")
+    for rid in compatible:
+        print(" -", rid)
+
+    # 3. (optional) show which snapshots you already have locally
+    print("\nLocal snapshots:")
+    report = scan_cache_dir()
+    for repo in report.repos:
+        if repo.repo_id in compatible:
+            print(" -", repo.repo_id, "→", repo.revision[:7])
 
 
 
