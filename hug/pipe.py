@@ -1,4 +1,9 @@
 """ generic pipeline handler
+
+list_pipelines()    -> list of diffusers pipelines
+load_pipeline()     -> generic loading from pretrained
+inspect_pipeline()  -> components and parameters
+
 """
 from typing import Optional, Any
 import diffusers

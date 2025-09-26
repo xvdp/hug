@@ -1,5 +1,16 @@
+"""
+a rien du tout wrapper over some huggingface cmds
+
+get_hf_home()           -> cache home
+get_model_files()       -> prints dowloaded snapshots's files if exists
+list_local_snapshots()  -> similar to huggingface-cli scan-cache
+get_local_snapshots()   -> ordered snapshots for modelId
+get_snapshot_pipeline() -> name of pipeline corresponding to snapshow # TODO test
+get_pipeline_snapshots()-> list of snapshots for named pipeline $ TODO fix and generalize
+"""
+
 from typing import Union, Optional
-import huggingface_hub as hf_hub
+import huggingface_hub as hub
 from huggingface_hub.errors import HFValidationError, HfHubHTTPError
 from huggingface_hub import hf_hub_download, scan_cache_dir
 import os
@@ -7,19 +18,21 @@ import os.path as osp
 import json
 from pprint import pprint
 
+
+
 def get_hf_home():
     import os
     home = os.getenv('HUGGINGFACE_HOME') or os.path.expanduser("~/.cache/huggingface")
     assert os.path.isdir(home), f" huggingface home folder does not exist in {home}"
     return home
 
-def list_models():
-    for repo in hf_hub.list_cached_models():
-        print(repo.repo_id, repo.repo_type, repo.size_on_disk // 1024**2, "MB")
+def get_hf_api():
+    return hub.HfApi()
 
-def get_model_files(model= "stable-diffusion-v1-5/stable-diffusion-inpainting"):
+
+def get_model_files(model="stable-diffusion-v1-5/stable-diffusion-inpainting"):
     """"""
-    cache_root = hf_hub.snapshot_download(model, local_files_only=True) 
+    cache_root = hub.snapshot_download(model, local_files_only=True) 
 
     for root, _, files in os.walk(cache_root):
         level = root.replace(cache_root, '').count(os.sep)
@@ -38,10 +51,10 @@ def param_summary(model, name):
 #     if hasattr(c, 'parameters'):
 #         param_summary(c, n)
 
-def list_models(tag="diffusers", search="stabilityai/stable-diffusion"):
-    from huggingface_hub import list_models
-    print("\n".join([(m.modelId) for m in
-                 list_models(filter="diffusers", search="stabilityai/stable-diffusion", sort="downloads", direction=-1, limit=40)]))
+# def list_models(tag="diffusers", search="stabilityai/stable-diffusion"):
+#     from huggingface_hub import list_models
+#     print("\n".join([(m.modelId) for m in
+#                  list_models(filter="diffusers", search="stabilityai/stable-diffusion", sort="downloads", direction=-1, limit=40)]))
 
 
 def _modelid_to_folder(model_id: str) -> str:
@@ -70,13 +83,13 @@ def _get_snapshots(model_folder: str) -> list:
 
 def _sorted_commits(model_id: str ) -> list:
     """ requires connection"""
-    api = hf_hub.HfApi()
+    api = get_hf_api()
     commits = api.list_repo_commits(model_id, repo_type="model")
     return {c.commit_id: i for i, c in
             enumerate(sorted(commits, key=lambda c: c.created_at, reverse=True))}
 
 def _model_exists(model_id: str) -> bool:
-    api = hf_hub.HfApi()
+    api = get_hf_api()
     try:
         api.model_info(model_id)
         return True
@@ -99,20 +112,6 @@ def _get_model_dirs(cache_home: Union[str, list, tuple, None] = None,) -> list:
         folders = home + folders
     return folders
 
-"""
-from huggingface_hub import list_models
-print("\n".join([(m.modelId) for m in
-                 list_models(filter="diffusers", search="stabilityai/stable-diffusion", sort="downloads", direction=-1, limit=40)]))
-print("\n".join([(m.modelId) for m in
-                 list_models(filter="diffusers", search="stable-diffusion-v1-", sort="downloads", direction=-1, limit=40)]))
-
-                 
-dict_keys(['id', 'author', 'sha', 'last_modified', 'created_at', 'private', 'gated', 'disabled', 'downloads',
-'downloads_all_time', 'likes', 'library_name', 'gguf', 'inference', 'inference_provider_mapping', 'tags', 'pipeline_tag',
-'mask_token', 'trending_score', 'card_data', 'widget_data', 'model_index', 'config', 'transformers_info', 'siblings', 'spaces',
-'safetensors', 'security_repo_status', 'xet_enabled', 'lastModified', 'cardData', 'transformersInfo', '_id', 'modelId'])
-
-"""
 
 def list_local_snapshots(cache_home: Union[str, list, tuple, None] = None,
                          verbose: bool=True) -> dict:
@@ -171,7 +170,7 @@ def get_local_snapshots(model_id: str,
     if not out:
         print(f" no local model found")
         if download:
-            out = [hf_hub.snapshot_download(model_id)]
+            out = [hub.snapshot_download(model_id)]
     try:
         commits = _sorted_commits(model_id)
         if len(out) > 1:
@@ -183,6 +182,7 @@ def get_local_snapshots(model_id: str,
     except HfHubHTTPError as e:
         print(f"not ordering commits, no internet connection found, {e}")
     return out
+
 
 def get_snapshot_pipeline(snapshot):
     """ From a local snapshot, get which pipleine it applies to
@@ -202,7 +202,7 @@ def get_pipeline_snapshots(pipeline="StableDiffusionInpaintPipeline", local_file
     looks into hugging face to which 
     """
 
-    api = hf_hub.HfApi()
+    api = get_hf_api()
 
     # 1. grab candidate repos from the Hub
     repos = api.list_models(
