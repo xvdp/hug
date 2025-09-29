@@ -1,0 +1,52 @@
+#!/usr/bin/env sh
+#
+# place in a folder in the path, e.g. ~/.local/bin
+# replaces `pip install <pkg> -c $CONDA_PREFIX/constraints.txt` with `pipinstall <pkg>`
+#
+set -eu
+die(){ printf '%s\n' "$*" >&2; exit 1; }
+
+SNAP_BEFORE="/tmp/${1}_before.txt"
+SNAP_AFTER="/tmp/${1}_after.txt"
+CONSTRAINTS="${CONDA_PREFIX}/constraints.txt"
+
+[ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set: to use outside of conda, modify constraint FOLDER ."
+command -v mamba >/dev/null 2>&1 || die "mamba not found on PATH"
+
+# --- decide whether we need to add -c ---------------------------------------
+user_has_constraint=false
+for arg in "$@"; do
+  case "$arg" in
+    -c|--constraint) user_has_constraint=true ;;      # covers "-c file"
+    -c*)  user_has_constraint=true ;;                # covers "-cfile"
+    --constraint=*) user_has_constraint=true ;;
+  esac
+done
+
+pip_args=""
+if [ "$user_has_constraint" = false ] && [ -f "$CONSTRAINTS" ]; then
+  pip_args="-c $CONSTRAINTS"
+fi
+
+# --- snapshots and install ---------------------------------------------------
+mamba list > "$SNAP_BEFORE"
+python -m pip install $pip_args "$@"               # real pip call
+mamba list > "$SNAP_AFTER"
+
+# --- diff output -------------------------------------------------------------
+outfile="${CONDA_PREFIX}/install_${1}_updates.txt"
+{
+    printf "===========\n$0\n"
+    printf "python -m pip install $pip_args $@ \n" "$*"
+    printf "\n(+) added \n"
+    grep -F -x -v -f "$SNAP_BEFORE" "$SNAP_AFTER" | grep -v '^#' || true
+    printf "\n(-) removed\n"
+    grep -F -x -v -f "$SNAP_AFTER"  "$SNAP_BEFORE" | grep -v '^#' || true
+    printf "\n(->) updated versions\n"
+    awk 'FNR==NR && !/^#/ {a[$1]=$0; next}
+        !/^#/ && ($1 in a) && a[$1]!=$0 {print a[$1] "  -->  " $0}' "$SNAP_BEFORE" "$SNAP_AFTER"
+} > "$outfile"
+
+# rm -f "$SNAP_BEFORE" "$SNAP_AFTER"
+printf "Installed ${1}, saved updated lib list to ${outfile}\n"
+cat ${outfile}

@@ -1,0 +1,65 @@
+#!/usr/bin/env sh
+#
+# Usage, inside conda environment
+#   $ pin <pkg1> <pkg2>
+# queries version of packages and adds them to $CONDA_PREFIX/constraints.txt and $CONDA_PREFIX/conda-meta/pinned
+# e.g
+#   $ pin python numpy
+#   $cat $CONDA_PREFIX/constraints.txt 
+#     numpy==1.26.4
+#     python==3.10.18
+# if those are the versions in the env,
+# then
+#   $ pipinstall pkg 
+# or
+#   $ pip install pkg -c $CONDA_PREFIX/constraints.txt 
+set -eu
+die(){ printf '%s\n' "$*" >&2; exit 1; }
+
+[ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX not set: activate a conda env first"
+command -v mamba >/dev/null 2>&1 || die "mamba not found on PATH"
+
+PIP_CONST="$CONDA_PREFIX/constraints.txt"
+CONDA_PIN="$CONDA_PREFIX/conda-meta/pinned"
+
+mkdir -p "$(dirname "$CONDA_PIN")"
+
+# ensure files exist
+touch "$PIP_CONST" "$CONDA_PIN"
+
+# ------------------------------------------------------------------
+# 1.  collect requested (pkg,version) pairs
+# ------------------------------------------------------------------
+tmp_new=$(mktemp)
+trap 'rm -f "$tmp_new"' EXIT
+
+for pkg in "$@"; do
+    record=$(mamba list -q "^${pkg}$" 2>/dev/null | grep -v '^#') || \
+        die "package '$pkg' is not installed in this environment"
+    name=$(printf '%s' "$record" | awk '{print $1}')
+    version=$(printf '%s' "$record" | awk '{print $2}')
+    printf '%s %s\n' "$name" "$version" >> "$tmp_new"
+done
+
+# ------------------------------------------------------------------
+# 2.  merge old + new, keep last entry for every package
+# ------------------------------------------------------------------
+# pip constraints  (pkg==version)
+awk '{print $1 "==" $2}' "$tmp_new" > "${tmp_new}.pip"
+awk -F== '!/^#/ {pip[$1]=$0} END {for(k in pip) print pip[k]}' \
+    "$PIP_CONST" "${tmp_new}.pip" > "${PIP_CONST}.tmp" && mv "${PIP_CONST}.tmp" "$PIP_CONST"
+
+# conda pinned  (pkg version.*)
+awk '{printf "%s %s.*\n", $1, $2}' "$tmp_new" > "${tmp_new}.conda"
+awk '!/^#/ {conda[$1]=$0} END {for(k in conda) print conda[k]}' \
+    "$CONDA_PIN" "${tmp_new}.conda" > "${CONDA_PIN}.tmp" && mv "${CONDA_PIN}.tmp" "$CONDA_PIN"
+
+
+# ------------------------------------------------------------------
+# 3.  log the resulting files
+# ------------------------------------------------------------------
+printf "\n===== %s =====\n" "$PIP_CONST"
+cat "$PIP_CONST"
+
+printf "\n===== %s =====\n" "$CONDA_PIN"
+cat "$CONDA_PIN"

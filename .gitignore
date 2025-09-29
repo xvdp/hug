@@ -1,6 +1,5 @@
 build/
 *.egg-info/
 __pycache__/
-scripts/
 version.py
 

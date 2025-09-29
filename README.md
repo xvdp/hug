@@ -1,15 +1,29 @@
 # hug
-basic hugging face handling scripts. Hugging space api is not clear to me, as like tha rest of the AI dev space has lots of code rot.
+basic hugging face handling scripts. Hugging space api is not clear to me, so as i use it i document it here.
+* HF requires login and tokens to download  `huggingface-cli login`
+* .cn alternative to huggingface: [modelscope](https://modelscope.cn/home). 
 
+## Components of this repo
+* model cache:    hf stores model in a hashed, and symlinked form, unless specified sored in cache home
+* deployment:
+    * remote - not explored here
+    * local
+        * some projects use hf only as model weight storage
+        * pipelines -> diffusers, trransformers
+* cli some info on cli commands
+* conda environment info and project constraint mgmt - dependencies are a tangle mess, pip and conda require very specific constraining to not loose.g.
+    * numpy 1.X -> 2. broke many things, opencv-python
+    * projects using cuda compilation require specific version
+    * google colab code breaks stuff (including google's own code) by going bleeding edge on python and numpy.
 
-HF will require tokens and login to download  `huggingface-cli login`
-
-## Hugging face cache
+## Cache home 
 * Local machine default `~/.cache/huggingface`, or `$HUGGINGFACE_HOME` 
 * subfolders: models now got to the `<cachehome>/hub`, before to `<>/diffusers` and `<>/transformers`
-## Traversing huggingface with cli
+
+## CLI cmds
 * `models = list_models( filter='', search='', sort='', limit='', ... ) -> iterator` [HF Notes](HFNOTES.md) # 2025.09 -> 2M+ models
 * `mod = next(models)` -> `.id` (name)==`.modelId` (name), `._id` (snapshot hash), `.pipeline_tag` (task), `.private` (bool), `.tags` (metadata list, papers, etc)
+
 
 ## snapshots
 ```python
@@ -27,18 +41,9 @@ list_local_snapshots(cache_home: Union[str, list, tuple, None] = None, verobse=T
 managed variant of native hf commend 
 `$ huggingface-cli scan-cache `
 
-### get pipeline for a downloaded snapshot
-``` python
-get_snapshot_pipeline(snapshot)
-# pulls info from model if model_index.json found under snapshot
-# Q: does every snapshot have a pipeline ? naa
-```
-### get snapshots for a pipeline
-```python
-get_pipeline_snapshots()
-```
+## Pipelines
 
-## diffusers
+### diffusers
 ```python
 list_pipelines(key, i=False, w=False) # list available pipelines with grep like switches -i -w
 # e.g.
@@ -51,3 +56,20 @@ load_pipeline(pipeline: str, model_id: str, download=False, **kwargs)  # downloa
 >>> pipe = load_pipeline(pipeline='StableDiffusionInpaintPipeline', model_id='stable-diffusion-v1-5/stable-diffusion-inpainting', torch_dtype=torch.float16)
 
 ```
+
+### get pipeline for a downloaded snapshot
+``` python
+get_snapshot_pipeline(snapshot)
+# pulls info from model if model_index.json found under snapshot
+# Q: does every snapshot have a pipeline ? naa
+```
+### get snapshots for a pipeline
+```python
+get_pipeline_snapshots()
+```
+
+# Conda / Mamba / Pip helper
+In `./scripts`, move to a location within `$PATH`,  maybe `~/.local/bin`
+
+* `$ pipinstall <args> <pkg>` # Replaces  `pip install -c $CONDA_PREFIX/constraints.txt <args> <pkg> `
+* `$ pin <pkg1> <pkg2> ...` # finds versions of pkgs and pins them both to conda (`$CONDA_PREFIX/conda-meta/pinned`) and pip (`CONDA_PREFIX/constraints.txt`)
