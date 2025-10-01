@@ -1,0 +1,66 @@
+#!/usr/bin/env sh
+# cudaOK
+# Checks $CUDA_HOME  >=  nvcc --version ==  torch.version.cuda
+
+ok=0
+
+# -------------------------------------------------
+# 1. CUDA_HOME
+# -------------------------------------------------
+if [ -n "${CUDA_HOME:-}" ] && [ -e "$CUDA_HOME/version.json" ]; then
+  cuda_home_ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9]\+\.[0-9]\+\).*/\1/p' "$CUDA_HOME/version.json")
+  printf 'CUDA_HOME (%s) : %s\n' "$CUDA_HOME" "$cuda_home_ver"
+else
+  printf 'CUDA_HOME        : Not found\n'
+  cuda_home_ver=""
+fi
+
+# -------------------------------------------------
+# 2. nvcc
+# -------------------------------------------------
+if command -v nvcc >/dev/null 2>&1; then
+  nvcc_ver=$(nvcc --version | sed -n 's/.*release[[:space:]]\([0-9]\+\.[0-9]\+\).*/\1/p')
+  printf 'nvcc             : %s\n' "$nvcc_ver"
+else
+  printf 'nvcc             : Not found\n'
+  nvcc_ver=""
+fi
+
+# -------------------------------------------------
+# 3. PyTorch
+# -------------------------------------------------
+if python -c "import torch" 2>/dev/null; then
+  torch_ver=$(python -c 'import torch; print(torch.version.cuda)')
+  printf 'torch.version.cuda: %s\n' "$torch_ver"
+else
+  printf 'torch.version.cuda: Not found\n'
+  torch_ver=""
+fi
+
+# -------------------------------------------------
+# 4. Simple conclusions
+# -------------------------------------------------
+printf '\n'
+
+# everything present
+if [ -n "$torch_ver" ] && [ -n "$nvcc_ver" ] && [ -n "$cuda_home_ver" ]; then
+  if [ "$torch_ver" = "$nvcc_ver" ]; then
+    printf '✔ nvcc and PyTorch agree on CUDA %s\n' "$torch_ver"
+    # numeric comparison  (12.8 ≤ 13.0  etc.)
+    if awk -v home="$cuda_home_ver" -v tgt="$torch_ver" \
+         'BEGIN{exit !(home>=tgt)}'; then
+      printf '✔ CUDA_HOME version >= runtime version → OK to build\n'
+    else
+      printf '⚠ CUDA_HOME version < runtime/compiler version – may fail\n'
+      ok=1
+    fi
+  else
+    printf '⚠ nvcc (%s) ≠ PyTorch (%s) – mismatch!\n' "$nvcc_ver" "$torch_ver"
+    ok=1
+  fi
+else
+  printf '⚠ Missing components – cannot verify alignment\n'
+  ok=1
+fi
+
+exit $ok

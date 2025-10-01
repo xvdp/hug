@@ -8,6 +8,7 @@ import os.path as osp
 import subprocess as sp
 import pandas as pd
 import json
+import tempfile
 
 # List of packages you want to check
 packages_to_check = ["python", "numpy", "torch", "ffmpeg", "opencv-python", "diffusers", "transformers",  "huggingface_hub", "jax",  "flax", "optax"]
@@ -22,8 +23,12 @@ aliases = {
     "transformers": "transf",
 }
 
-CONDA_DIR = os.getenv("CONDA_PREFIX") if os.getenv("CONDA_DEFAULT_ENV") == "base" else osp.abspath(osp.join(os.getenv("CONDA_PREFIX"), "..", ".."))
-CSV_FILE = osp.join(CONDA_DIR, "conda_envs.csv")
+def get_envs_csv(name="conda_envs.csv"):
+    conda_dir = os.getenv("CONDA_PREFIX")
+    assert isinstance(conda_dir, str) and osp.isdir(conda_dir)
+    if os.getenv("CONDA_DEFAULT_ENV") != "base":
+        conda_dir = osp.abspath(osp.join(conda_dir, "..", ".."))
+    return osp.join(conda_dir, name)
 
 def get_conda_envs():
     """Return list of (env_name, env_path)."""
@@ -82,8 +87,9 @@ def get_all_packages(env_name):
     return out
 
 def load_csv():
-    if osp.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
+    csv_file = get_envs_csv()
+    if osp.exists(csv_file):
+        df = pd.read_csv(csv_file)
         known_envs = set(df["env"])
     else:
         df = pd.DataFrame()
@@ -104,8 +110,9 @@ def load_csv():
 
 
 def main(rebuild=False):
+    csv_file = get_envs_csv()
     if rebuild:
-        os.remove(CSV_FILE)
+        os.remove(csv_file)
     df_existing, known_envs = load_csv()
 
     envs = get_conda_envs()
@@ -136,14 +143,23 @@ def main(rebuild=False):
     else:
         df = df_new
     df = df.fillna("-")
-    df.to_csv(CSV_FILE, index=False)
-    # pd.set_option("display.max_columns", None)
-    # df.to_html(CSV_FILE.replace(".csv", ".html"), index=False, render_links=True)
+    df.to_csv(csv_file, index=False)
 
+    return csv_file
+
+def runstreamlit(csv):
+    viewenvs = os.path.join(osp.dirname(__file__), "viewenvs.py")
+    sp.run([sys.executable, "-m", "streamlit", "run", viewenvs])
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "rebuild":
-        main(rebuild=True)
-    else:
-        main()
-    print ("run streamlit run viewenvs.py # REQUIRES streamlit")
+    rebuild = True if len(sys.argv) > 1 and sys.argv[1] == "rebuild" else False
+    csv_file = main(rebuild=rebuild)
+
+    try:
+        import streamlit
+        runstreamlit(csv_file)
+        # st_py = os.path.join(os.path.dirname(__file__), "viewinventory.py")
+        # sp.run([sys.executable, "-m", "streamlit", "run", st_py])
+    except:
+        print(f"Conda env file saved ro {csv_file},\n to view pip install streamlit && \
+              streamlit run {osp.join(osp.dirname(__file__), 'viewenvs.py')}")
