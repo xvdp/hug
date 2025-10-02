@@ -1,18 +1,29 @@
 #!/usr/bin/env sh
 #
-# Usage, inside conda environment
+# TO BE RUN inside a Conda environment
+# saves conda and pip pins for existing packages
+#
+# Usage, place script in a folder in $PATH or run locally
 #   $ pin <pkg1> <pkg2>
-# queries version of packages and adds them to $CONDA_PREFIX/constraints.txt and $CONDA_PREFIX/conda-meta/pinned
-# e.g
+# 1. queries installed versions
+# 2. adds them to $CONDA_PREFIX/constraints.txt and $CONDA_PREFIX/conda-meta/pinned
+
+# Example, on a conda env with python    and numpy installed
 #   $ pin python numpy
-#   $cat $CONDA_PREFIX/constraints.txt 
+# validate files
+#   $ cat $CONDA_PREFIX/constraints.txt 
 #     numpy==1.26.4
 #     python==3.10.18
-# if those are the versions in the env,
+#   $ cat $CONDA_PREFIX/conda-meta/pinned
+#     numpy 1.26.4.*
+#     python 3.10.18.*
+
 # then
-#   $ pipinstall pkg 
-# or
+#   $ pipinstall pkg  # see pipinstall script
+# or equivalently 
 #   $ pip install pkg -c $CONDA_PREFIX/constraints.txt 
+# conda respects pins s by default o conda install pkg suffices.
+
 set -eu
 die(){ printf '%s\n' "$*" >&2; exit 1; }
 
