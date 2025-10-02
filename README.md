@@ -3,6 +3,8 @@ basic hugging face handling scripts. Hugging space api is not clear to me, so as
 * HF requires login and tokens to download  `huggingface-cli login`
 * .cn alternative to huggingface: [modelscope](https://modelscope.cn/home). 
 
+hugging face keeps chaning. 
+
 ## Components of this repo
 * model cache:    hf stores model in a hashed, and symlinked form, unless specified sored in cache home
 * deployment:
@@ -24,6 +26,11 @@ basic hugging face handling scripts. Hugging space api is not clear to me, so as
 * `models = list_models( filter='', search='', sort='', limit='', ... ) -> iterator` [HF Notes](HFNOTES.md) # 2025.09 -> 2M+ models
 * `mod = next(models)` -> `.id` (name)==`.modelId` (name), `._id` (snapshot hash), `.pipeline_tag` (task), `.private` (bool), `.tags` (metadata list, papers, etc)
 
+### huggingface-cli  Deprecation notice
+```
+huggingface-cli download Wan-AI/Wan2.2-S2V-14B --local-dir ./Wan2.2-S2V-14B
+⚠️   Warning: 'huggingface-cli download' is deprecated. Use 'hf download' instead.
+```
 
 ## snapshots
 ```python
@@ -69,7 +76,9 @@ get_pipeline_snapshots()
 ```
 
 # Conda / Mamba / Pip helper
-In `./scripts`, move to a location within `$PATH`,  maybe `~/.local/bin`
+In `./conda`, move to a location within `$PATH`,  maybe `~/.local/bin`
 
 * `$ pipinstall <args> <pkg>` # Replaces  `pip install -c $CONDA_PREFIX/constraints.txt <args> <pkg> `
 * `$ pin <pkg1> <pkg2> ...` # finds versions of pkgs and pins them both to conda (`$CONDA_PREFIX/conda-meta/pinned`) and pip (`CONDA_PREFIX/constraints.txt`)
+* `python envlist.py [rebuild]` # stores `<CONDA ROOT>/conda_envs.csv` with a list of packages of concern to list, pops it in browser. Requires streamlit fpr viewing.
+* `streamlit viewenvs.py` # pops  `<CONDA ROOT>/conda_envs.csv` in browser, called by `envlist.py`

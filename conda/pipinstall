@@ -6,6 +6,16 @@
 set -eu
 die(){ printf '%s\n' "$*" >&2; exit 1; }
 
+
+join_and_sanitize() {
+  # Join args with underscores
+  local joined=$(IFS=_; echo "$*")
+  # Replace anything not alphanumeric with underscores
+  # [:alnum:] is portable for letters & numbers
+  local sanitized=$(echo "$joined" | sed 's/[^[:alnum:]]/_/g')
+  echo "$sanitized"
+}
+
 SNAP_BEFORE="/tmp/${1}_before.txt"
 SNAP_AFTER="/tmp/${1}_after.txt"
 CONSTRAINTS="${CONDA_PREFIX}/constraints.txt"
@@ -33,8 +43,10 @@ mamba list > "$SNAP_BEFORE"
 python -m pip install $pip_args "$@"               # real pip call
 mamba list > "$SNAP_AFTER"
 
+name=$(join_and_sanitize "$@")
+
 # --- diff output -------------------------------------------------------------
-outfile="${CONDA_PREFIX}/install_${1}_updates.txt"
+outfile="${CONDA_PREFIX}/install_${name}_updates.txt"
 {
     printf "===========\n$0\n"
     printf "python -m pip install $pip_args $@ \n" "$*"
