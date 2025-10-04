@@ -68,7 +68,7 @@ awk '
         print a[$1]"  -->  "$0
     }
 ' "$SNAP_BEFORE" "$SNAP_AFTER" >"$tmp_updated" || true
-
+outfile="No_file"
 # --- only include changes in final report -------------------------------------
 if [[ -s "$tmp_added" || -s "$tmp_removed" || -s "$tmp_updated" ]]; then
     outfile="${CONDA_PREFIX}/install_${name}_${datestamp}.txt"
@@ -92,6 +92,11 @@ if [[ -s "$tmp_added" || -s "$tmp_removed" || -s "$tmp_updated" ]]; then
 fi
 
 # rm -f "$SNAP_BEFORE" "$SNAP_AFTER"
-printf "Installed ${1}, saved updated lib list to ${outfile}\n"
+if [ -f "$outfile" ]; then
+    printf "Installed ${1}, saved updated lib list to ${outfile}\n"
+    cat ${outfile}
+else
+    echo "All requirements satisfied, nothing installed"
+fi
 rm -f "$tmp_added" "$tmp_removed" "$tmp_updated"
-cat ${outfile}
+
