@@ -25,3 +25,14 @@ header_hight = row_height + 5
 height = rows*row_height + header_hight
 st.title("Projects")
 st.dataframe(df, use_container_width=True, height=height)
+
+
+
+# def make_project_clickable(row):
+#     return f'<a href="{row["github_url"]}">{row["project"]}</a>'
+# # display_df['project'] = df.apply(make_project_clickable, axis=1)
+# df['project'] = df['project'].apply(make_project_clickable)
+# # Convert the DtaFrame to an HTML string
+# html_table = df.to_html(escape=False)
+# # Display the HTML table in Streamlit
+# st.markdown(html_table, unsafe_allow_html=True)

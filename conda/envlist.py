@@ -11,16 +11,20 @@ import json
 import tempfile
 
 # List of packages you want to check
-packages_to_check = ["python", "numpy", "torch", "ffmpeg", "opencv-python", "diffusers", "transformers",  "huggingface_hub", "jax",  "flax", "optax"]
+packages_to_check = ["python", "numpy", "torch", "ffmpeg", "opencv-python",
+                     "diffusers", "transformers",  "huggingface_hub", "jax",  "flax", "optax",
+                     "mediapipe", "onnx", "onnxruntime"]
 
 
 # Aliases for some packages
 aliases = {
     "python": "py",
     "numpy": "np",
-    "huggingface_hub": "hug_hub",
+    "huggingface_hub": "hf_hub",
     "opencv-python": "cv2",
     "transformers": "transf",
+    "mediapipe": "mp", 
+    "onnxruntime": "onnxrt"
 }
 
 def get_envs_csv(name="conda_envs.csv"):

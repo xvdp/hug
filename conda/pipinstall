@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 #
 # place in a folder in the path, e.g. ~/.local/bin
 # replaces `pip install <pkg> -c $CONDA_PREFIX/constraints.txt` with `pipinstall <pkg>`
@@ -7,13 +7,18 @@ set -eu
 die(){ printf '%s\n' "$*" >&2; exit 1; }
 
 
-join_and_sanitize() {
-  # Join args with underscores
-  local joined=$(IFS=_; echo "$*")
-  # Replace anything not alphanumeric with underscores
-  # [:alnum:] is portable for letters & numbers
-  local sanitized=$(echo "$joined" | sed 's/[^[:alnum:]]/_/g')
-  echo "$sanitized"
+join_and_sanitize () {
+    local parts=()
+    for arg in "$@"; do
+        [[ "$arg" == -* ]] && continue   # drop any dash‑option
+        # strip version specifiers
+        arg="${arg%%[![:alnum:]._-]*}"
+        # turn path separators into underscores
+        arg="${arg//\//_}"
+        arg="${arg//\\/ _}"
+        parts+=("$arg")
+    done
+    IFS=_; printf '%s\n' "${parts[*]}" | sed -E 's/[^[:alnum:]_]+/_/g'
 }
 
 SNAP_BEFORE="/tmp/${1}_before.txt"
@@ -22,6 +27,11 @@ CONSTRAINTS="${CONDA_PREFIX}/constraints.txt"
 
 [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set: to use outside of conda, modify constraint FOLDER ."
 command -v mamba >/dev/null 2>&1 || die "mamba not found on PATH"
+
+# --- block packages from being installed in base
+if [[ ${CONDA_DEFAULT_ENV} == "base" ]]; then
+    die "attempting to install package on (base) blocked"
+fi
 
 # --- decide whether we need to add -c ---------------------------------------
 user_has_constraint=false
@@ -39,26 +49,49 @@ if [ "$user_has_constraint" = false ] && [ -f "$CONSTRAINTS" ]; then
 fi
 
 # --- snapshots and install ---------------------------------------------------
+name=$(join_and_sanitize "$@")
+datestamp=$(date '+%Y%m%d%H%M%S')
+
 mamba list > "$SNAP_BEFORE"
 python -m pip install $pip_args "$@"               # real pip call
 mamba list > "$SNAP_AFTER"
 
-name=$(join_and_sanitize "$@")
+# --- make temp files ---------------------------------------------------------
+tmp_added=$(mktemp)     # lines that appear only in AFTER
+tmp_removed=$(mktemp)   # lines that disappear in AFTER
+tmp_updated=$(mktemp)   # lines that changed (same pkg name, different record)
+grep -F -x -v -f "$SNAP_BEFORE" "$SNAP_AFTER" | grep -v '^#' >"$tmp_added" || true
+grep -F -x -v -f "$SNAP_AFTER" "$SNAP_BEFORE" | grep -v '^#' >"$tmp_removed" || true
+awk '
+    FNR==NR && !/^#/ { a[$1]=$0; next }   # read BEFORE, index by first field (pkg name)
+    !/^#/ && ($1 in a) && a[$1]!=$0 {   # line exists in AFTER, same name, different content
+        print a[$1]"  -->  "$0
+    }
+' "$SNAP_BEFORE" "$SNAP_AFTER" >"$tmp_updated" || true
 
-# --- diff output -------------------------------------------------------------
-outfile="${CONDA_PREFIX}/install_${name}_updates.txt"
-{
-    printf "===========\n$0\n"
-    printf "python -m pip install $pip_args $@ \n" "$*"
-    printf "\n(+) added \n"
-    grep -F -x -v -f "$SNAP_BEFORE" "$SNAP_AFTER" | grep -v '^#' || true
-    printf "\n(-) removed\n"
-    grep -F -x -v -f "$SNAP_AFTER"  "$SNAP_BEFORE" | grep -v '^#' || true
-    printf "\n(->) updated versions\n"
-    awk 'FNR==NR && !/^#/ {a[$1]=$0; next}
-        !/^#/ && ($1 in a) && a[$1]!=$0 {print a[$1] "  -->  " $0}' "$SNAP_BEFORE" "$SNAP_AFTER"
-} > "$outfile"
+# --- only include changes in final report -------------------------------------
+if [[ -s "$tmp_added" || -s "$tmp_removed" || -s "$tmp_updated" ]]; then
+    outfile="${CONDA_PREFIX}/install_${name}_${datestamp}.txt"
+    {
+        printf "===========\n%s\n" "$0"
+        printf "python -m pip install %s %s\n" "$pip_args" "$*"
+        # Only print a section when it actually has content
+        if [[ -s "$tmp_added" ]]; then
+            printf "\n(+) added\n"
+            cat "$tmp_added"
+        fi
+        if [[ -s "$tmp_removed" ]]; then
+            printf "\n(-) removed\n"
+            cat "$tmp_removed"
+        fi
+        if [[ -s "$tmp_updated" ]]; then
+            printf "\n(>) updated\n"
+            cat "$tmp_updated"
+        fi
+    } >"$outfile"
+fi
 
 # rm -f "$SNAP_BEFORE" "$SNAP_AFTER"
 printf "Installed ${1}, saved updated lib list to ${outfile}\n"
+rm -f "$tmp_added" "$tmp_removed" "$tmp_updated"
 cat ${outfile}

@@ -1,29 +1,35 @@
 #!/usr/bin/env sh
 #
-# TO BE RUN inside a Conda environment
-# saves conda and pip pins for existing packages
+# Use: place script in a folder in $PATH or run locally
+#   $ pin <pkg1> <pkg2> # pins existing pkg1 pkg2 in conda environ.
 #
-# Usage, place script in a folder in $PATH or run locally
-#   $ pin <pkg1> <pkg2>
+#   $ pin # prints pinned packages
+# 
+# RUN inside a Conda environment, https://github.com/xvdp/hug.git
 # 1. queries installed versions
 # 2. adds them to $CONDA_PREFIX/constraints.txt and $CONDA_PREFIX/conda-meta/pinned
 
-# Example, on a conda env with python    and numpy installed
-#   $ pin python numpy
-# validate files
-#   $ cat $CONDA_PREFIX/constraints.txt 
+# Example, on a conda env with python and numpy
+
+# $ pin python numpy
+# $ cat $CONDA_PREFIX/constraints.txt 
 #     numpy==1.26.4
 #     python==3.10.18
-#   $ cat $CONDA_PREFIX/conda-meta/pinned
-#     numpy 1.26.4.*
-#     python 3.10.18.*
+#
+# ===== /opt/conda/envs/abl/constraints.txt =====
+# numpy==1.26.4
+# python==3.10.18
+#
+# ===== /opt/conda/envs/abl/conda-meta/pinned =====
+# numpy 1.26.4.*
+# python 3.10.18.*
 
-# then
+# THEN
 #   $ pipinstall pkg  # see pipinstall script
+
 # or equivalently 
 #   $ pip install pkg -c $CONDA_PREFIX/constraints.txt 
-# conda respects pins s by default o conda install pkg suffices.
-
+#
 set -eu
 die(){ printf '%s\n' "$*" >&2; exit 1; }
 
@@ -69,8 +75,9 @@ awk '!/^#/ {conda[$1]=$0} END {for(k in conda) print conda[k]}' \
 # ------------------------------------------------------------------
 # 3.  log the resulting files
 # ------------------------------------------------------------------
-printf "\n===== %s =====\n" "$PIP_CONST"
+printf "Conda env: >>${CONDA_PREFIX}<< pinned:"
+printf "\n\n===== %s =====\n" "$PIP_CONST"
 cat "$PIP_CONST"
 
 printf "\n===== %s =====\n" "$CONDA_PIN"
-cat "$CONDA_PIN"
+cat "$CONDA_PIN" 
