@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -eu
+chu_qu(){ printf '%s\n' "$*" >&2; exit 1; }
+# 出去 chū-qù   -> to exit
+# 出口  chū-kǒu -> way out, as seen in intl airports
+
+if [[ $# -ne 2 ]]; then
+    chu_qu "Usage: $0 <env1> <env2>"
+fi
+env1="$1"
+env2="$2"
+
+if ! conda_envs=$(conda env list | awk '{print $1}' | tail -n +3); then
+    chu_qu "Error: failed to list conda environments"
+fi
+
+# 有效  yǒu-xiào -> valid, are enviroments valid?
+valid() {
+    local name="$1"
+    if echo "$conda_envs" | grep -qx "$name"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+for env in "$env1" "$env2"; do
+    if ! valid "$env"; then
+        chu_qu "Error: '$env' is not a valid conda environment."
+    fi
+done
+
+# --- Temp files --------------
+SNAP_1=$(mktemp "/tmp/${env1}.XXXXXX.txt")
+SNAP_1_CUT=$(mktemp "/tmp/${env1}_cut.XXXXXX.txt")
+
+SNAP_2=$(mktemp "/tmp/${env2}.XXXXXX.txt")
+SNAP_2_CUT=$(mktemp "/tmp/${env2}_cut.XXXXXX.txt")
+
+COMMON=$(mktemp "/tmp/common_${env1}_${env2}.XXXXXX.txt")
+ONLY_2=$(mktemp "/tmp/${env2}_only.XXXXXX.txt")
+ONLY_1=$(mktemp "/tmp/${env1}_only.XXXXXX.txt")
+UPDATED=$(mktemp "/tmp/diff_${env1}_${env2}.XXXXXX.txt")
+ENVDIFF=$(mktemp "/tmp/ENVDIFF_${env1}_${env2}.XXXXXX.txt")
+
+# --- grep differences  --------------
+conda run -n $env1 conda list > "$SNAP_1"
+conda run -n $env2 conda list > "$SNAP_2"
+
+grep -Fxf "$SNAP_1" "$SNAP_2" | sort -u > "$COMMON"
+
+# first-field list of SNAP_1
+cut -d' ' -f1 "$SNAP_1" | sort -u > "$SNAP_1_CUT"
+cut -d' ' -f1 "$SNAP_2" | sort -u > "$SNAP_2_CUT"
+
+# lines of SNAP_2 whose first field is NOT in that list
+awk 'NR==FNR{keys[$1]; next} !($1 in keys)' "$SNAP_1_CUT" "$SNAP_2" > "$ONLY_2"
+awk 'NR==FNR{keys[$1]; next} !($1 in keys)' "$SNAP_2_CUT" "$SNAP_1" > "$ONLY_1"
+# grep -F -x -v -f "$SNAP_1" "$SNAP_2" | grep -v '^#' >"$ONLY_2" || true
+# grep -F -x -v -f "$SNAP_2" "$SNAP_1" | grep -v '^#' >"$ONLY_1" || true
+
+
+awk '
+    FNR==NR && !/^#/ { a[$1]=$0; next }
+    !/^#/ && ($1 in a) && a[$1]!=$0 {
+        print a[$1]"  \n-->  "$0
+    }
+' "$SNAP_1" "$SNAP_2" >"$UPDATED" || true
+
+# --- Log results --------------
+if [[ -s "$COMMON" || -s "$ONLY_2" || -s "$ONLY_1" || -s "$UPDATED" ]]; then
+    {
+        printf "===========\n"
+        printf "DIFF between ${env1} and ${env2}"
+
+        if [[ -s "$COMMON" ]]; then
+            printf "\n COMMON files\n"
+            cat "$COMMON"
+        fi
+        # if [[ -s "$ONLY_1" ]]; then
+        printf "\n============= ${env1}  ONLY ===============\n"
+        cat "$ONLY_1"
+        # fi
+        # if [[ -s "$ONLY_2" ]]; then
+        printf "\n============= ${env2}  ONLY ===============\n"
+        cat "$ONLY_2"
+        
+        if [[ -s "$UPDATED" ]]; then
+            printf "\n============= VERSION DIFF ${env1} --> ${env2} \n"
+            cat "$UPDATED"
+        fi
+    } >"$ENVDIFF"
+fi
+cat ${ENVDIFF}
+
+SNAP_1=$(mktemp "/tmp/${env1}.XXXXXX.txt")
+SNAP_2=$(mktemp "/tmp/${env2}.XXXXXX.txt")
+COMMON=$(mktemp "/tmp/common_${env1}_${env2}.XXXXXX.txt")
+ONLY_2=$(mktemp "/tmp/${env2}_only.XXXXXX.txt")
+ONLY_1=$(mktemp "/tmp/${env1}_only.XXXXXX.txt")
+UPDATED=$(mktemp "/tmp/diff_${env1}_${env2}.XXXXXX.txt")
+ENVDIFF=$(mktemp "/tmp/ENVDIFF_${env1}_${env2}.XXXXXX.txt")
+
+
+trap 'rm -f "$SNAP_1" "$SNAP_2" "$COMMON" "$ONLY_2" "$ONLY_1" "$UPDATED" "$ENVDIFF" "$SNAP_1_CUT" "$SNAP_2_CUT"' EXIT

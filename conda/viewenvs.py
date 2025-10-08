@@ -11,7 +11,7 @@ def get_envs_csv(name="conda_envs.csv"):
 
 st.set_page_config(page_title="Conda/Mamba Env Inventory", layout="wide")
 df = pd.read_csv(get_envs_csv())
-rows = len(df)
+rows = len(df) + 1
 row_height = 35  
 st.title("Mamba Environments")
 st.dataframe(df, use_container_width=True, height=rows*row_height)

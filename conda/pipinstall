@@ -4,10 +4,13 @@
 # replaces `pip install <pkg> -c $CONDA_PREFIX/constraints.txt` with `pipinstall <pkg>`
 #
 set -eu
-die(){ printf '%s\n' "$*" >&2; exit 1; }
+# 出去 chū-qù   -> to exit
+# 出口  chū-kǒu -> way out, as seen in intl airports
+chu_qu () { printf '%s\n' "$*" >&2; exit 1; }
 
 
-join_and_sanitize () {
+# merge  合并  hé-bìng
+he_bing () {
     local parts=()
     for arg in "$@"; do
         [[ "$arg" == -* ]] && continue   # drop any dash‑option
@@ -21,16 +24,22 @@ join_and_sanitize () {
     IFS=_; printf '%s\n' "${parts[*]}" | sed -E 's/[^[:alnum:]_]+/_/g'
 }
 
-SNAP_BEFORE="/tmp/${1}_before.txt"
-SNAP_AFTER="/tmp/${1}_after.txt"
+# --- create temp files
+SNAP_BEFORE=$(mktemp "/tmp/${1}_before.XXXXXX.txt")
+SNAP_AFTER=$(mktemp "/tmp/${1}_after.XXXXXX.txt")
+TMP_ADDED=$(mktemp)     # lines that appear only in AFTER
+TMP_REMOVED=$(mktemp)   # lines that disappear in AFTER
+TMP_UPDATED=$(mktemp)   # lines that changed (same pkg name, different record)
+
+
 CONSTRAINTS="${CONDA_PREFIX}/constraints.txt"
 
-[ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set: to use outside of conda, modify constraint FOLDER ."
-command -v mamba >/dev/null 2>&1 || die "mamba not found on PATH"
+[ -n "${CONDA_PREFIX:-}" ] || chu_qu "CONDA_PREFIX is not set: to use outside of conda, modify constraint FOLDER ."
+command -v mamba >/dev/null 2>&1 || chu_qu "mamba not found on PATH"
 
 # --- block packages from being installed in base
 if [[ ${CONDA_DEFAULT_ENV} == "base" ]]; then
-    die "attempting to install package on (base) blocked"
+    chu_qu "attempting to install package on (base) blocked"
 fi
 
 # --- decide whether we need to add -c ---------------------------------------
@@ -49,44 +58,41 @@ if [ "$user_has_constraint" = false ] && [ -f "$CONSTRAINTS" ]; then
 fi
 
 # --- snapshots and install ---------------------------------------------------
-name=$(join_and_sanitize "$@")
+name=$(he_bing "$@")
 datestamp=$(date '+%Y%m%d%H%M%S')
 
 mamba list > "$SNAP_BEFORE"
 python -m pip install $pip_args "$@"               # real pip call
 mamba list > "$SNAP_AFTER"
 
-# --- make temp files ---------------------------------------------------------
-tmp_added=$(mktemp)     # lines that appear only in AFTER
-tmp_removed=$(mktemp)   # lines that disappear in AFTER
-tmp_updated=$(mktemp)   # lines that changed (same pkg name, different record)
-grep -F -x -v -f "$SNAP_BEFORE" "$SNAP_AFTER" | grep -v '^#' >"$tmp_added" || true
-grep -F -x -v -f "$SNAP_AFTER" "$SNAP_BEFORE" | grep -v '^#' >"$tmp_removed" || true
+# --- compare environment ---------------------------------------------------------
+grep -F -x -v -f "$SNAP_BEFORE" "$SNAP_AFTER" | grep -v '^#' >"$TMP_ADDED" || true
+grep -F -x -v -f "$SNAP_AFTER" "$SNAP_BEFORE" | grep -v '^#' >"$TMP_REMOVED" || true
 awk '
     FNR==NR && !/^#/ { a[$1]=$0; next }   # read BEFORE, index by first field (pkg name)
     !/^#/ && ($1 in a) && a[$1]!=$0 {   # line exists in AFTER, same name, different content
         print a[$1]"  -->  "$0
     }
-' "$SNAP_BEFORE" "$SNAP_AFTER" >"$tmp_updated" || true
+' "$SNAP_BEFORE" "$SNAP_AFTER" >"$TMP_UPDATED" || true
 outfile="No_file"
 # --- only include changes in final report -------------------------------------
-if [[ -s "$tmp_added" || -s "$tmp_removed" || -s "$tmp_updated" ]]; then
+if [[ -s "$TMP_ADDED" || -s "$TMP_REMOVED" || -s "$TMP_UPDATED" ]]; then
     outfile="${CONDA_PREFIX}/install_${name}_${datestamp}.txt"
     {
         printf "===========\n%s\n" "$0"
         printf "python -m pip install %s %s\n" "$pip_args" "$*"
         # Only print a section when it actually has content
-        if [[ -s "$tmp_added" ]]; then
+        if [[ -s "$TMP_ADDED" ]]; then
             printf "\n(+) added\n"
-            cat "$tmp_added"
+            cat "$TMP_ADDED"
         fi
-        if [[ -s "$tmp_removed" ]]; then
+        if [[ -s "$TMP_REMOVED" ]]; then
             printf "\n(-) removed\n"
-            cat "$tmp_removed"
+            cat "$TMP_REMOVED"
         fi
-        if [[ -s "$tmp_updated" ]]; then
+        if [[ -s "$TMP_UPDATED" ]]; then
             printf "\n(>) updated\n"
-            cat "$tmp_updated"
+            cat "$TMP_UPDATED"
         fi
     } >"$outfile"
 fi
@@ -98,5 +104,5 @@ if [ -f "$outfile" ]; then
 else
     echo "All requirements satisfied, nothing installed"
 fi
-rm -f "$tmp_added" "$tmp_removed" "$tmp_updated"
+trap 'rm -f "$TMP_ADDED" "$TMP_REMOVED" "$TMP_UPDATED" "SNAP_BEFORE" "SNAP_AFTER"' EXIT
 

@@ -3,15 +3,14 @@
 >>> project = "/home/z/work24/gits/Video/Wan2.2"
 >>> add_project(project, conda='abm', force=True)
 """
-import pandas as pd
+import subprocess as sp
 import os
 import os.path as osp
-import os
-import re
-import subprocess as sp
 from pathlib import Path
-
+import re
+import pandas as pd
 import logging
+import shutil
 
 logging.basicConfig(level=logging.INFO)
 
@@ -97,13 +96,37 @@ def delete_project(project):
     logging.info(f"Deleted project '{project}'.")
 
 
-
-def col_set(col_name, place: int ):
+def add_cell(project, column, value, write: bool = True):
     """
     """
     fname = get_proj_csv()
     if not os.path.exists(fname):
+        raise FileNotFoundError(f"{fname} file does not exist, run add_project instead")
+    
+    df = pd.read_csv(fname, dtype=str).fillna('-')
+    if project not in df["project"].values:
+        logging.warning(f"Project '{project}' not found in CSV, run add_project instead")
+        return df
+    
+    if column not in df:
+        df.insert(len(df.columns) - 1, column, "-")
+        
+    idx = df.index[df["project"] == project][0]
+    df.at[idx, column] = value
+    if write:
+        shutil.copyfile(fname, fname+".bak")
+        df.to_csv(fname, index=False)
+    return df
+
+
+def col_set(column, place: int = -1, write: bool = True):
+    """ add e column with name at place
+    """
+    fname = get_proj_csv()
+    if not os.path.exists(fname):
         raise FileNotFoundError(f"{fname} file does not exist.")
+
+    shutil.copyfile(fname, fname+".bak")
     df = pd.read_csv(fname, dtype=str).fillna('-')
     # Fixed columns
     fixed = ["project", "conda", "docker"]
@@ -112,14 +135,16 @@ def col_set(col_name, place: int ):
         raise ValueError(f"MColumns '{missing}' not in {fname}.")
     # other
     keys = [c for c in df.columns if c not in fixed]
-    if col_name not in keys:
-        raise ValueError(f"Col '{col_name}' not in {fname}.")
-    keys.remove(col_name)
+    if column not in keys:
+        raise ValueError(f"Col '{column}' not in {fname}.")
+    keys.remove(column)
     numcols = len(keys) + 1 
     place = min(place, len(keys))% numcols
-    keys.insert(place, col_name)
+    keys.insert(place, column)
     df = df[fixed + keys]
-    df.to_csv(fname, index=False)
+    if write:
+        shutil.copyfile(fname, fname+".bak")
+        df.to_csv(fname, index=False)
     return df
 
 
@@ -148,11 +173,20 @@ def _get_installed_packages(conda):
             cmd = ["conda", "list"]
         result = sp.run(cmd, capture_output=True, text=True, check=True)
 
+        _cuda = False
         for line in result.stdout.splitlines():
             if line and not line.startswith("#"):
                 parts = line.split()
                 if len(parts) >= 2:
-                    pkgs[parts[0].lower()] = parts[1]
+                    pkg  =parts[0].lower()
+                    version = parts[1]
+                    pkgs[pkg] = version
+                    if pkg in ("cudatoolkit", "cuda-toolkit") and not _cuda:
+                        pkgs["cuda"] = version
+                        _cuda = True
+                    if pkg in ("cuda", "cuda-version"):
+                        pkgs["cuda"] = version
+                        _cuda = True
         return pkgs
     except Exception:
         # fallback to pip
@@ -163,7 +197,7 @@ def _get_installed_packages(conda):
                 pkgs[name.lower()] = ver
         return pkgs
 
-def _parse_requirements(path):
+def _parse_requirements(path, filterreq=None):
     """Return dict {package: constraint} for pinned packages from requirements files."""
     pinned = {}
     req_re = re.compile(r"^([A-Za-z0-9_\-]+)(\[.*\])?([<>=!~].+)$")
@@ -175,8 +209,9 @@ def _parse_requirements(path):
             m = req_re.match(line)
             if m:
                 pkg = m.group(1).lower()
-                constraint = m.group(3)
-                pinned[pkg] = constraint
+                if filterreq is None or pkg in filterreq:
+                    constraint = m.group(3)
+                    pinned[pkg] = constraint
     return pinned
 
 
@@ -194,23 +229,35 @@ def _resolve_project(project=None):
     return project, path
 
 
-def add_project(project=None, conda=None, docker=None, force=False, libs=(), **kwargs):
+def check_cuda(version):
+    pass
 
+def add_project(project=None, conda=None, docker=None, force=False, libs=(), all_requirements=True, **kwargs):
+    """
+    add_project("ControlNet", conda="ab310", libs=("python", "numpy", "torch", "cuda", "torchvision", "transformers", "diffusers"), all_requirements=False, ,path="/home/z/work24/gits/Diffusion/ControlNet")
+    
+    TODO: akll requirements False, should check req. before list
+    TODO setting path, should not check installed. 
+
+    """
     project, path = _resolve_project(project)
     installed = None 
+    required = ["project", "conda", "docker", "python", "path"]
+    libs = list(libs)
+
 
     # CSV load or init
     fname = get_proj_csv()
     if os.path.exists(fname):
         df = pd.read_csv(fname, dtype=str).fillna("-")
+        shutil.copyfile(fname, fname+".bak")
     else:
-        df = pd.DataFrame(columns=["project", "conda", "docker", "python", "path"])
-
+        df = pd.DataFrame(columns=required)
     # Ensure required columns
-    required = ["project", "conda", "docker", "python", "path"]
     for col in required:
         if col not in df.columns:
             df[col] = "-"
+
 
     # If path is set, parse requirements
     pkgs = {}
@@ -221,7 +268,8 @@ def add_project(project=None, conda=None, docker=None, force=False, libs=(), **k
     pkgs = {**kwargs}
     if path:
         for reqfile in Path(path).glob("requirements*.txt"):
-            pkgs.update(_parse_requirements(reqfile))
+            filterreq = None if all_requirements else libs
+            pkgs.update(_parse_requirements(reqfile, filterreq))
 
     # Build row template
     new_row = {col: "-" for col in df.columns}
@@ -239,9 +287,15 @@ def add_project(project=None, conda=None, docker=None, force=False, libs=(), **k
             installed = _get_installed_packages(conda)
 
     # add columns csv
-    libs = list(libs)
     if 'python' not in pkgs.keys():
         libs.append('python')
+
+    for pkg, constraint in pkgs.items():
+        if pkg not in df.columns:
+            # Insert pinned package column before 'path'
+            df.insert(len(df.columns) - 1, pkg, "-")
+        version = "" if installed is None or pkg=='path' else " | " + installed.get(pkg, "X")
+        new_row[pkg] = f"{constraint}{version}"
 
     if project in df["project"].values:
         idx = df.index[df["project"] == project][0]
@@ -253,14 +307,6 @@ def add_project(project=None, conda=None, docker=None, force=False, libs=(), **k
             # Insert pinned package column before 'path'
             df.insert(len(df.columns) - 1, pkg, "-")
         new_row[pkg] = installed.get(pkg, "-")
-
-    for pkg, constraint in pkgs.items():
-        if pkg not in df.columns:
-            # Insert pinned package column before 'path'
-            df.insert(len(df.columns) - 1, pkg, "-")
-        version = "" if installed is None else " | "+installed.get(pkg, "X")
-        new_row[pkg] = f"{constraint}{version}"
-
 
     # # Insert row or update existing
     if project in df["project"].values:

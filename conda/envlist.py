@@ -113,11 +113,16 @@ def load_csv():
     # df['City'] = new_city_values
 
 
-def main(rebuild=False):
+def main(rebuild=False, rebuild_env=None):
     csv_file = get_envs_csv()
     if rebuild:
         os.remove(csv_file)
     df_existing, known_envs = load_csv()
+    if rebuild_env and rebuild_env in known_envs:
+        df_existing = df_existing[df_existing["env"] != rebuild_env]
+        known_envs = list(known_envs)
+        known_envs.pop(known_envs.index(rebuild_env))
+        known_envs = set(known_envs)
 
     envs = get_conda_envs()
     rows = []
@@ -156,8 +161,15 @@ def runstreamlit(csv):
     sp.run([sys.executable, "-m", "streamlit", "run", viewenvs])
 
 if __name__ == "__main__":
-    rebuild = True if len(sys.argv) > 1 and sys.argv[1] == "rebuild" else False
-    csv_file = main(rebuild=rebuild)
+    rebuild  = False
+    rebuild_env = None
+    if  len(sys.argv) > 1:
+        if sys.argv[1] == "rebuild":
+            rebuild = True
+        else:
+            rebuild_env = sys.argv[1]
+    
+    csv_file = main(rebuild=rebuild, rebuild_env=rebuild_env)
 
     try:
         import streamlit
