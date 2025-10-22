@@ -60,7 +60,6 @@ def load_inpaint_pipe(model_id='stable-diffusion-v1-5/stable-diffusion-inpaintin
         pipeline = 'StableDiffusionInpaintPipeline'
         return load_pipeline(pipeline, model_id, torch_dtype=torch.float16)
 
-
 def inspect_pipeline(pipe) -> None:
     """
     """

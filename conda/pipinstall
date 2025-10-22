@@ -10,7 +10,7 @@ chu_qu () { printf '%s\n' "$*" >&2; exit 1; }
 
 
 # merge  合并  hé-bìng
-he_bing () {
+merge () {
     local parts=()
     for arg in "$@"; do
         [[ "$arg" == -* ]] && continue   # drop any dash‑option
@@ -58,7 +58,7 @@ if [ "$user_has_constraint" = false ] && [ -f "$CONSTRAINTS" ]; then
 fi
 
 # --- snapshots and install ---------------------------------------------------
-name=$(he_bing "$@")
+name=$(merge "$@")
 datestamp=$(date '+%Y%m%d%H%M%S')
 
 mamba list > "$SNAP_BEFORE"

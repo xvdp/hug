@@ -32,6 +32,7 @@ def check_for_conflicts(requirements):
 setup(
     name="hug",
     install_requires=['huggingface_hub', "diffusers"],
+    packages=["hug"],
     url='http://github.com/xvdp/hug',
-    version=_set_version(version='0.0.1')
+    version=_set_version(version='0.0.3')
 )
