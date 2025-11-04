@@ -1,11 +1,12 @@
 # hug
+## perhaps this jumble of docs and poor code should be private, iti snot clean, code or docs, it contains a mix of stuff. but I find it simpler to leave it out there than deal with passwords.
 basic hugging face handling scripts. Hugging space api is not clear to me, so as i use it i document it here.
 * HF requires login and tokens to download  `huggingface-cli login`
 * .cn alternative to huggingface: [modelscope](https://modelscope.cn/home). 
 
 hugging face keeps chaning. 
 
-## Components of this repo
+## Components
 * model cache:    hf stores model in a hashed, and symlinked form, unless specified sored in cache home
 * deployment:
     * remote - not explored here
@@ -82,3 +83,7 @@ In `./conda`, move to a location within `$PATH`,  maybe `~/.local/bin`
 * `$ pin <pkg1> <pkg2> ...` # finds versions of pkgs and pins them both to conda (`$CONDA_PREFIX/conda-meta/pinned`) and pip (`CONDA_PREFIX/constraints.txt`)
 * `python envlist.py [rebuild]` # stores `<CONDA ROOT>/conda_envs.csv` with a list of packages of concern to list, pops it in browser. Requires streamlit fpr viewing.
 * `streamlit viewenvs.py` # pops  `<CONDA ROOT>/conda_envs.csv` in browser, called by `envlist.py`
+
+
+# docjumble / Attention
+* [Attention](docjumble/Attention.md)

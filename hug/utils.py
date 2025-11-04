@@ -55,6 +55,7 @@ pprint(dict(pipe.unet.config))
 
 
 import inspect
+import re
 from typing import Union, Callable, Optional, Any
 
 
@@ -66,20 +67,44 @@ import torchinfo
 from torch.fx import symbolic_trace
 from pprint import pprint
 
+def re_between_pattern(delims: tuple, flags=0):
+    """build a pattern from 2 delimiters
+    Args
+        delims  tuple of strings, eg ('[`', '`]'), ("**", "**") "{{", "}}"
+        flags re.DOTALL re.IGNORECASE
+    re.escape("[`") ->  # returns '\\[`' 
+    """
+    start, end = map(re.escape, delims)  # Escape special regex chars
+    pattern = rf"{start}(.*?){end}"      # Non-greedy capture
+    return re.compile(pattern, flags)
+
+def find_in_doc(obj: Any, delims: tuple=('[`', '`]')):#, pattern=r"- \*\*(.*?)\*\*" ):
+    """ eg.
+    from transformers import AutoTokenizer
+    tok_models = find_in_doc(AutoTokenizer.from_pretrained)
+    """
+    pattern = re_between_pattern(delims)
+    doc = inspect.getdoc(obj)
+    out = re.findall(pattern, doc)
+    return out
 
 
-def record_help(obj: Any, filename: str) -> str:
-    """ help(obj) > filename
+
+def record_help(obj: Any, filename: str) -> None:
+    """ help(obj)
     """
     basedir = osp.abspath(osp.expanduser(osp.dirname(filename)))
     os.makedirs(basedir, exist_ok=True)
     help_text = pydoc.render_doc(obj, renderer=pydoc.plaintext)
+    if not osp.splitext(filename)[1]:
+        filename += ".md"
     with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"## hug.hug.record_help({str(obj)}")
         f.write("```\n")
         f.write(help_text)
         f.write("\n```\n")
-    return help_text
-
+    print(f"record_help() -> {filename} saved")
+    
 
 ### 
 # Callables of a class
